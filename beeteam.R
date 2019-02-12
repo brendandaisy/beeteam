@@ -5,15 +5,17 @@ require(wesanderson)
 
 ## core model: bumblebees and honeybees share transmission route via flowers
 
+# number of days to run the model
+maxT = 50
+
 # model parameters
-params = c(k = 100, # number of flowers visited per day
-           p = .05, # prob. infection picked up from flower
-           q = .01, # prob infection deposited on flower
+params = c(p = 0.112, # prob. infection picked up from flower
+           q = 0.112, # prob infection deposited on flower
            d = 1/7, # death rate (lifespan = 1/d days)
-           z = 1/5, # flower recovery/death
+           z = 0, # flower recovery/death
            Nb = 10^2, # number bumble bees
            Nh = 10^2, # num honey bees
-           Nf = 10^3) # num flowers 
+           Nf = 10^2) # num flowers         
 
 # model start state. by default, a single honeybee
 state = c(B = 0, # B := num infected bumblebees
@@ -21,19 +23,20 @@ state = c(B = 0, # B := num infected bumblebees
           FL = 0) # FL := num infected flowers
 
 # timesteps for which model output should be recorded
-times = seq(0, 100, by=1)
+times = seq(0, maxT, by=1)
 
 beeteam = function(t, state, parameters) {
   # model difference equations
   with(as.list(c(state, parameters)), {
-    dB = k*p*(Nb - B)*FL/Nf - d*B
-    dH = k*p*(Nh - H)*FL/Nf - d*H
-    dF = k*q*((Nf - FL)*(H + B))/Nf - z*FL
+    dB = p*(Nb - B)*FL/Nf - d*B
+    dH = p*(Nh - H)*FL/Nf - d*H
+    dF = q*((Nf - FL)*(H + B))/Nf - z*FL
     return(list(c(dB, dH, dF)))
   })
 }
 
-run_model = function() {
+quick_run = function() {
+  # run the ode with "default" values
   # wrapper to ease notation and ensure above global values are used
   ode(y=state, times=times, func=beeteam, parms=params)
 }
@@ -100,7 +103,7 @@ repr_number = function(n=20) {
 color_pal = wes_palette(name = "Darjeeling1", 3)
 names(color_pal) = c('B', 'H', 'FL')
 
-plot_time_series = function(ode = NULL, 
+plot_time_series = function(ode = quick_run(),
                             pop = c('B', 'H', 'FL'),
                             colors = color_pal) {
   # plot population infection levels as function of time
