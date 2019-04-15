@@ -5,40 +5,41 @@ require(wesanderson)
 
 ## core model: bumblebees and honeybees share transmission route via flowers
 
-# number of days to run the model
-maxT = 100
-
 # model parameters
-params = c(p = 0.17, # intrinsic flower to bee infection rate
-           q = 0.3, # intrinsic bee to flower infection rate
-           d = 1/7, # death rate (lifespan = 1/d days)
-           z = 1/10, # flower recovery/death
-           Nb = 100, # number bumble bees
-           Nh = 100, # num honey bees
-           Nf = 100) # num flowers
+params_base = c(p = 0.17, # intrinsic flower to bee infection rate (mean)
+                q = 0.3, # intrinsic bee to flower infection rate (mean)
+                d = 1/7, # death rate (lifespan = 1/d days)
+                z = 1/10, # flower recovery/death
+                Nb = 100, # number bumble bees
+                Nh = 100, # num honey bees
+                Nf = 100) # num flowers
 
 # model start state. by default, a single honeybee
-state = c(B = 0, # B := num infected bumblebees
-          H = 1, # H := num infected honeybees
-          FL = 0) # FL := num infected flowers
+## state = c(B = 0, # B := num infected bumblebees
+##           H = 1, # H := num infected honeybees
+##           FL = 0) # FL := num infected flowers
 
-# timesteps for which model output should be recorded
-times = seq(0, maxT, by=1)
+## beeteam = function(t, state, parameters) {
+##   # model difference equations
+##   with(as.list(c(state, parameters)), {
+##     dB = p*(Nb - B)*FL/Nf - d*B
+##     dH = p*(Nh - H)*FL/Nf - d*H
+##     dFL = q*((Nf - FL)*(H + B))/Nf - z*FL
+##     return(list(c(dB, dH, dFL)))
+##   })
+## }
 
-beeteam = function(t, state, parameters) {
-  # model difference equations
-  with(as.list(c(state, parameters)), {
-    dB = p*(Nb - B)*FL/Nf - d*B
-    dH = p*(Nh - H)*FL/Nf - d*H
-    dFL = q*((Nf - FL)*(H + B))/Nf - z*FL
-    return(list(c(dB, dH, dFL)))
-  })
-}
+## quick_run = function() {
+##   # run the ode with "default" values
+##   # wrapper to ease notation and ensure above global values are used
+##   ode(y=state, times=times, func=beeteam, parms=params)
+## }
 
-quick_run = function() {
-  # run the ode with "default" values
-  # wrapper to ease notation and ensure above global values are used
-  ode(y=state, times=times, func=beeteam, parms=params)
+run_model = function(start = set_state(1, 1),
+                     max_t = 100,
+                     parms = set_params(1)) {
+    ode(y=start, times=0:max_t, func=beeteam, parms=parms) %>%
+        as_tibble
 }
 
 ## additional functions for aiding analysis
@@ -99,14 +100,26 @@ repr_number = function(n=20) {
 
 ## model visualizations: several helper functions for viewing model with ggplot
 
-# default colors for each population
-color_pal = wes_palette(name = "Darjeeling1", 3)
-names(color_pal) = c('B', 'H', 'FL')
-color_pal2 = wes_palette(name = "Darjeeling1", 3)
+### default colors for each population
+color_pal = wes_palette('Darjeeling2', 3)
+names(color_pal) = c('B', 'H', 'F')
+color_pal2 = wes_palette('Darjeeling2', 3)
 names(color_pal2) = c('Nb', 'Nh', 'Nf')
 
-plot_time_series = function(ode = quick_run(),
-                            pop = c('B', 'H', 'FL'),
+## color_pal = function(n=fl_types) {
+##     ret = plasma(n+2)
+##     names(ret) = c('B', 'H', str_c('F', 1:n))
+##     ret
+## }
+
+## color_pal2 = function(n=fl_types) {
+##     ret = viridis(n+2)
+##     names(ret) = c('Nb', 'Nh', str_c('Nf', 1:n))
+##     ret
+## }
+
+plot_time_series = function(out = run_model(),
+                            pop = colnames(out[,-1]),
                             colors = color_pal) {
   # plot population infection levels as function of time
   # input: 
@@ -115,13 +128,16 @@ plot_time_series = function(ode = quick_run(),
     # colors: a color pallette. Must have names corresponding to names in 'pop'
   # output:
     # a ggplot object
-    as.data.frame(ode) %>%
-    select(pop, time) %>%
-    gather(Population, inf, -time) %>%
-    ggplot(aes(x=time, y=inf, col=Population)) +
-      geom_line(size=1.2) +
-      labs(y=paste(str_c(pop, collapse=", "), "Infections"), x="Time (Days)") +
-      theme_few() + scale_color_manual(values=colors)
+    out %>%
+        gather(type, inf, starts_with('F')) %>%
+        ggplot(aes(x=time, y=inf)) +
+        stat_summary(fun.y = sum, col='red', geom='smooth', linetype='dotted', alpha=.7) +
+        stat_summary(fun.data = median_hilow, fun.args = list(conf.int = .5), fill=grey(.5), geom='ribbon', alpha=.5) +
+        stat_summary(fun.y = median, col='red', geom='smooth', size=1.2) +
+        geom_line(mapping=aes(x=time, y=B), col='blue', size=1.2) +
+        geom_line(mapping=aes(x=time, y=H), col='green', size=1.2) +
+        labs(y="Infections", x="Time (Days)") +
+        theme_few()
 }
 
 plot_state_space = function(ode = quick_run()) {
@@ -160,42 +176,77 @@ plot_fixed_points = function(n = 1:100,
         theme_few() + scale_color_manual(values=colors)
 }
 
-## plot_2d_state_space = function(ode = quick_run(),
-##                                pop = c('B', 'H'),
-##                                colors = color_pal) {
-##   # plot population infection levels as function of time
-##   # input: 
-##   # ode: a matrix of class deSolve
-##   # pop: columns of ode to select, representing infection levels
-##   # colors: a color pallette. Must have names corresponding to names in 'pop'
-##   # output:
-##   # a ggplot object
-##   if (length(pop) != 2) {
-##     stop('only 2 dimensional state space supported; pop must be of length 2')
-##   }
-##   as.data.frame(ode) %>%
-##     select(pop) %>%
-##     ggplot(aes(x=eval(pop[1]), y=eval(pop[2]))) +
-##       geom_line(size=1.2) +
-##       labs() +
-##       theme_few()
-## }
+### heterogenus flower type model
 
+set_params = function(fl_types = 1,
+                       pd = pmax(rnorm(fl_types, params['p'], ifelse(fl_types > 1, .1, 0)), 0),
+                       qd = pmax(rnorm(fl_types, params['q'], ifelse(fl_types > 1, .15, 0)), 0),
+                       zd = pmax(rnorm(fl_types, params['z'], ifelse(fl_types > 1, .1, 0)), 0)) {
+    with(as.list(c(params_base)), {
+        ## pd = if (is.null(pd)) rep(p, fl_types) else pd
+        ## qd = if (is.null(qd)) rep(q, fl_types) else qd
+        ## zd = if (is.null(zd)) rep(z, fl_types) else zd
+        ret = c(pd, qd, d, zd, Nb, Nh, rep(Nf %/% fl_types, fl_types))
+        names(ret) = c(str_c('p', 1:fl_types), str_c('q', 1:fl_types), 'd', str_c('z', 1:fl_types), 'Nb', 'Nh', str_c('Nf', 1:fl_types))
+        return(ret)
+    })
+}
 
-## additional simple SIS model for intercolony dynamics between bees
+set_state = function(fl_types=1, H=1, B=0) {
+    with(as.list(c(params_base)), {
+        ret = c(B, H, rep(0, fl_types))
+        names(ret) = c('B', 'H', str_c('F', 1:fl_types))
+        return(ret)
+    })
+}
 
-params_colony = c(b = .18,
-                  d = 1/7,
-                  Nh = 10^3)
+## params_flowers = make_params(pmax(rnorm(fl_types, params['p'], .1), 0),
+##                              pmax(rnorm(fl_types, params['q'], .15), 0),
+##                              pmax(rnorm(fl_types, params['z'], .1), 0))
+## state_flowers = make_state(10)
 
-state_colony = c(H=1)
+get_fl_params = function(i, parameters) {
+    c(parameters[str_c('p', i)],
+      parameters[str_c('q', i)],
+      parameters[str_c('z', i)],
+      parameters[str_c('Nf', i)])
+}
 
-inter_colony = function(t, state, parameters) {
-  with(as.list(c(state, parameters)), {
-    dH = b*(Nh - H)*H / Nh - d*H
-    return(list(c(dH)))
+de_flowers = function(i, state, parameters) {
+    with(as.list(c(state, parameters)), {
+        fp = get_fl_params(i, parameters)
+        Nf = sum(parameters[str_detect(names(parameters), 'Nf')])
+        return(fp[2] * ((fp[4] - state[str_c('F', i)]) * (H + B)) / Nf - fp[3] * state[str_c('F', i)])
+    })
+}
+
+de_bumble = function(i, state, parameters) {
+    with(as.list(c(state, parameters)), {
+        fp = get_fl_params(i, parameters)
+        Nf = sum(parameters[str_detect(names(parameters), 'Nf')])
+        return(fp[1] * (Nb - B) * state[str_c('F', i)] / Nf)
+    })
+}
+
+de_honey = function(i, state, parameters) {
+    with(as.list(c(state, parameters)), {
+        fp = get_fl_params(i, parameters)
+        Nf = sum(parameters[str_detect(names(parameters), 'Nf')])
+        return(fp[1] * (Nh - H) * state[str_c('F', i)] / Nf)
+    })
+}
+
+beeteam = function(t, state, parameters) {
+    with(as.list(c(state, parameters)), {
+        fl_types = length(state) - 2
+        dB = sum(map_dbl(1:fl_types, de_bumble, state, parameters)) - d * B
+        dH = sum(map_dbl(1:fl_types, de_honey, state, parameters)) - d * H
+        dFs = 1:fl_types %>% map_dbl(de_flowers, state, parameters)
+        return(list(c(dB, dH, dFs)))
   })
 }
+
+### single flower model, with mites!
 
 # model parameters
 params_mites = c(p = 0.112, # intrinsic flower to bee infection rate
@@ -208,16 +259,14 @@ params_mites = c(p = 0.112, # intrinsic flower to bee infection rate
                  Nb = 100, # number bumble bees
                  Nh = 400, # num honey bees
                  Nf = 100,
-                 Nm = 70) # num flowers         
+                 Nm = 70) 
 
-# model start state. by default, a single honeybee
-state_mites = c(B = 0, # B := num infected bumblebees
-          H = 1, # H := num infected honeybees
+state_mites = c(B = 0, 
+          H = 1,
           FL = 0,
-          M = 0) # FL := num infected flowers
+          M = 0)
 
 beeteam_mites = function(t, state, parameters) {
-  # model difference equations
   with(as.list(c(state, parameters)), {
     dB = p*(Nb - B)*FL/Nf - d*B
     dH = .05 * (Nh - H)*FL/Nf - d*H +
@@ -227,3 +276,18 @@ beeteam_mites = function(t, state, parameters) {
     return(list(c(dB, dH, dFL, dM)))
   })
 }
+
+## ## additional simple SIS model for intercolony dynamics between bees
+
+## params_colony = c(b = .18,
+##                   d = 1/7,
+##                   Nh = 10^3)
+
+## state_colony = c(H=1)
+
+## inter_colony = function(t, state, parameters) {
+##   with(as.list(c(state, parameters)), {
+##     dH = b*(Nh - H)*H / Nh - d*H
+##     return(list(c(dH)))
+##   })
+## }

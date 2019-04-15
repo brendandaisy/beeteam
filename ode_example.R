@@ -29,8 +29,10 @@ plot_time_series(ode=hi_out, pop=c('B', 'FL')) +
 ### another way to change parameters is to just change the default settings
 ### EX2: effect of increasing Nf
 
-params['Nf'] = 700 # add more flowers
+
+params['Nf'] =  (params[5] * params[1] * params[2] + params[6] * params[1] * params[2]) / (params[3] * params[4]) - 1# add more flowers
 state['H'] = 50 # start with more infections for aesthetic reasons
+times = seq(0, 10000)
 
 plot_time_series() # now, infection is declining
 
